@@ -1,28 +1,16 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/main.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxLambdaSize": "50mb"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/hackrx/run",
-      "dest": "/api/main"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/api/main"
-    }
-  ],
   "functions": {
     "api/main.py": {
+      "runtime": "python3.9",
       "memory": 1024,
       "maxDuration": 60
     }
-  }
+  },
+  "routes": [
+    {
+      "src": "/api/v1/hackrx/run",
+      "dest": "/api/main.py"
+    }
+  ]
 }
