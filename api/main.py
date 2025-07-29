@@ -7,6 +7,8 @@ import os
 import pickle
 import time
 import re
+import tempfile
+import json
 
 # Direct sentence-transformers
 from sentence_transformers import SentenceTransformer
@@ -16,22 +18,21 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
 from langchain.tools import tool
 
-# Configuration - OPTIMIZED FOR SPEED
+# Configuration - OPTIMIZED FOR SPEED (Vercel adapted)
 CHUNK_SIZE = 1000  # Larger chunks = fewer embeddings = faster
 CHUNK_OVERLAP = 200   # Minimal overlap = faster chunking
-EMBEDDINGS_PATH = os.path.join(os.getcwd(), "data", "embeddings.pkl")
 MODEL_NAME = "all-MiniLM-L6-v2"
-MAX_WORKERS = 8  # More parallel workers
+MAX_WORKERS = 4  # Reduced for Vercel limits
 
-os.environ["LANGSMITH_TRACING"] = "true"
-os.environ["LANGSMITH_API_KEY"] = "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"
-os.environ["GOOGLE_API_KEY"] = "AIzaSyCmJN2FUOs0k7YFw0SgHBLII1hfBpkxO1s"
+# Environment variables - Vercel compatible
+os.environ["LANGSMITH_TRACING"] = os.environ.get("LANGSMITH_TRACING", "true")
+os.environ["LANGSMITH_API_KEY"] = os.environ.get("LANGSMITH_API_KEY", "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")
+os.environ["GOOGLE_API_KEY"] = os.environ.get("GOOGLE_API_KEY", "AIzaSyCmJN2FUOs0k7YFw0SgHBLII1hfBpkxO1s")
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+    model="gemini-2.0-flash-exp",
     google_api_key=os.environ["GOOGLE_API_KEY"],
     temperature=0,
     max_tokens=None,
@@ -57,7 +58,10 @@ class LightningFastPDFPipeline:
     def fetch_pdf_lightning(self, url: str) -> bytes:
         """Fastest possible PDF fetch"""
         print("⚡ Fetching PDF...")
-        response = requests.get(url, timeout=30)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(url, timeout=30, headers=headers)
         response.raise_for_status()
         return response.content
 
@@ -84,9 +88,9 @@ class LightningFastPDFPipeline:
             return {'page_num': page_num + 1, 'text': '', 'has_potential_table': False}
 
     def extract_pdf_lightning(self, pdf_bytes: bytes) -> List[Document]:
-        """Lightning-fast parallel extraction"""
-        os.makedirs("data", exist_ok=True)
-        temp_path = os.path.join("data", "temp_pdf.pdf")
+        """Lightning-fast parallel extraction - Vercel adapted"""
+        # Use /tmp directory for Vercel
+        temp_path = os.path.join("/tmp", f"temp_pdf_{int(time.time())}.pdf")
         try:
             with open(temp_path, "wb") as f:
                 f.write(pdf_bytes)
@@ -184,11 +188,11 @@ class LightningFastPDFPipeline:
         return all_chunks
 
     def embed_vectorized_batch(self, texts: List[str]) -> np.ndarray:
-        """Maximum speed embedding with large batches"""
+        """Maximum speed embedding with large batches - Vercel optimized"""
         print(f"⚡ Embedding {len(texts)} chunks in large batches...")
 
-        # Use maximum batch size for speed
-        batch_size = min(64, len(texts))  # Larger batches = faster
+        # Use smaller batch size for Vercel memory limits
+        batch_size = min(32, len(texts))  # Reduced for Vercel
 
         all_embeddings = []
         for i in range(0, len(texts), batch_size):
@@ -207,43 +211,24 @@ class LightningFastPDFPipeline:
         return np.vstack(all_embeddings)
 
     def create_lightning_vectorstore(self, chunks: List[Document]) -> None:
-        """Fastest possible vectorstore creation"""
+        """Fastest possible vectorstore creation - Vercel adapted (no caching)"""
         if not chunks:
             return
 
-        # Check cache first
-        if os.path.exists(EMBEDDINGS_PATH):
-            try:
-                print("⚡ Loading cached embeddings...")
-                with open(EMBEDDINGS_PATH, 'rb') as f:
-                    data = pickle.load(f)
-                    self.embeddings = data['embeddings']
-                    self.chunk_texts = data['chunk_texts']
-                    self.chunks = data['chunks']
-
-                    table_count = len([c for c in self.chunks if 'table' in c.metadata.get('content_type', '')])
-                    print(f"⚡ Loaded {len(self.chunks)} cached chunks ({table_count} table-pattern)")
-                    return
-            except:
-                print("Cache load failed, creating new embeddings...")
+        # No caching on Vercel due to stateless nature
+        print("⚡ Creating embeddings (no cache on Vercel)...")
 
         # Create embeddings with maximum speed
         chunk_texts = [chunk.page_content for chunk in chunks]
         embeddings = self.embed_vectorized_batch(chunk_texts)
 
-        # Store everything
+        # Store everything in memory
         self.embeddings = embeddings
         self.chunk_texts = chunk_texts
         self.chunks = chunks
 
-        # Cache with compression for speed
-        print("⚡ Caching embeddings...")
-        with open(EMBEDDINGS_PATH, 'wb') as f:
-            pickle.dump({
-                'embeddings': embeddings,
-                'chunk_texts': chunk_texts,
-                'chunks': chunks
-            }, f, protocol=pickle.HIGHEST_PROTOCOL)
+        table_count = len([c for c in self.chunks if 'table' in c.metadata.get('content_type', '')])
+        print(f"⚡ Created {len(self.chunks)} chunks ({table_count} table-pattern)")
 
     def search_lightning_fast(self, query: str, k: int = 3) -> List[Dict]:
         """Fastest possible similarity search"""
@@ -276,8 +261,6 @@ class LightningFastPDFPipeline:
 
     def ingest_lightning_fast(self, pdf_url: str) -> None:
         """MAXIMUM SPEED ingestion pipeline with step-by-step timing"""
-        import time
-
         total_start = time.time()
         print("⚡⚡⚡ LIGHTNING FAST INGESTION STARTING ⚡⚡⚡")
 
@@ -296,7 +279,7 @@ class LightningFastPDFPipeline:
         chunks = self.lightning_chunking(documents)
         print(f"✂️  Chunking took {time.time() - t2:.2f} sec")
 
-        # 4. Embed + save to FAISS
+        # 4. Embed + save to vectorstore
         t3 = time.time()
         self.create_lightning_vectorstore(chunks)
         print(f"🧠 Embedding + vectorstore took {time.time() - t3:.2f} sec")
@@ -305,7 +288,6 @@ class LightningFastPDFPipeline:
         total_end = time.time()
         print(f"\n⚡ TOTAL PIPELINE TIME: {total_end - total_start:.2f} sec")
         print(f"⚡ READY TO SEARCH {len(self.chunks) if self.chunks else 0} chunks")
-
 
     def search(self, query: str, k: int = 3) -> str:
         """Lightning-fast search with smart formatting"""
@@ -331,60 +313,27 @@ class LightningFastPDFPipeline:
 
         return "\n\n" + ("-" * 50 + "\n").join(formatted)
 
-# Global pipeline
-lightning_pipeline = LightningFastPDFPipeline()
+# Global pipeline - will be created per request on Vercel
+lightning_pipeline = None
 
 @tool
 def document_retriever(query: str) -> str:
     """Lightning-fast document search"""
-    print('Asked: ',query)
+    global lightning_pipeline
+    if lightning_pipeline is None:
+        return "Error: Pipeline not initialized."
+    
+    print('Asked: ', query)
     a = lightning_pipeline.search(query)
     print('response', a)
     print('...............')
     return a
 
-# Usage
-# if __name__ == "__main__":
-#     PDF_URL = "https://hackrx.in/policies/CHOTGDP23004V012223.pdf"
-
-#     # Lightning ingestion
-#     lightning_pipeline.ingest_lightning_fast(PDF_URL)
-
-#     # Lightning searches
-#     print("\n" + "=" * 60)
-#     print("⚡ LIGHTNING SEARCH TEST:")
-#     result = lightning_pipeline.search("premium amount age 25", k=3)
-#     print(result)
-
-
-
-
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
+# Using your original prompt structure
 query_ans_prompt = """
-You are a helpful AI assistant, you will recieve query regarding any doc which has been embedded and stored in a vector database and you can query it using 'document_retriever' tool
-You have to understand the user query and intelligently answer them after querying and retrieving all relevant info using the tool (you can call the tool multiple times, simultaniously)
-You only answer questions related to the doc.
-"""
-query_ans_prompt2 = """
-You are a smart and structured data assistant. You will be given context from a PDF along with a user question about that content.
-
-Your task is:
-1. Read and analyze the provided context (from the PDF).
-2. Understand the user's question.
-3. Generate a clear, accurate, and concise answer based on the PDF and you should only use the data from the data provided.
-4. Structure the answer in JSON format based on the type of question asked.
-
-Only respond with a JSON object that includes:
-- `answer`: A natural language response to the question.
-- `structured_data`: A structured JSON containing relevant data extracted or inferred from the PDF, depending on the question type.
-
-If the question cannot be answered from the provided context, set:
-- `answer`: "The answer is not available in the provided data."
-- `structured_data`: `null`
-"""
-query_ans_prompt3 = """
 You are a smart, structured and data driven Q&A assistant. You will be given context from a PDF along with a user question about that content.
 your task is:
 1. Read and analyze the provided context (from the PDF).
@@ -402,62 +351,134 @@ If the question cannot be answered from the provided context, set:
 - `answer`: "The answer is not available in the provided data."
 - `structured_data`: `null`
 """
+
 Get_query_solved = create_react_agent(
     llm,
-    tools = [document_retriever],
-    prompt= query_ans_prompt
+    tools=[document_retriever],
+    prompt=query_ans_prompt
 )
-# query = input('what is your query? ')
-
-# brief = Get_query_solved.invoke({"messages": [HumanMessage(content= f"User query: {query}" )]})
-
-# print(brief['messages'][-1].content)
 
 from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-app = FastAPI()
+app = FastAPI(title="PDF Query API", description="Lightning-fast PDF query system")
+
+# Add CORS middleware for hackathon compatibility
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class QueryRequest(BaseModel):
     documents: str
     questions: list
 
-@app.post("/hackrx/run")
+@app.post("/api/v1/run")
 async def run_query(request: QueryRequest):
+    """
+    Main hackathon endpoint
+    Expected format:
+    {
+        "documents": "https://example.com/document.pdf",
+        "questions": ["Question 1?", "Question 2?"]
+    }
+    
+    Returns:
+    {
+        "answers": ["Answer 1", "Answer 2"]
+    }
+    """
+    global lightning_pipeline
+    
     try:
+        print(f"📥 Received request with document: {request.documents}")
+        print(f"📋 Questions ({len(request.questions)}): {request.questions}")
+        
+        # Initialize pipeline for this request (Vercel stateless)
+        lightning_pipeline = LightningFastPDFPipeline()
+        
         # Step 1: Ingest the document
         lightning_pipeline.ingest_lightning_fast(request.documents)
 
         # Step 2: Answer each question
         answers = []
-        for question in request.questions:
+        for i, question in enumerate(request.questions):
+            print(f"🤔 Processing question {i+1}/{len(request.questions)}: {question}")
+            
             result = Get_query_solved.invoke({
                 "messages": [HumanMessage(content=f"User query: {question}")]
             })
+            
             message = result['messages'][-1].content
 
-            # Optional: Extract only the 'answer' field if the LLM returns JSON
+            # Extract answer from JSON response or use raw message
             try:
-                import json
-                parsed = json.loads(message)
-                answers.append(parsed.get('answer', message))
-            except:
-                answers.append(message)
+                # Try to parse JSON response
+                if '{' in message and '}' in message:
+                    json_start = message.find('{')
+                    json_end = message.rfind('}') + 1
+                    json_str = message[json_start:json_end]
+                    parsed = json.loads(json_str)
+                    answer = parsed.get('answer', message)
+                else:
+                    answer = message
+            except json.JSONDecodeError:
+                answer = message
+            except Exception:
+                answer = message
 
+            answers.append(answer)
+            print(f"✅ Answer {i+1}: {answer[:100]}{'...' if len(answer) > 100 else ''}")
+
+        print(f"🎉 Successfully processed all {len(answers)} questions")
         return JSONResponse(content={"answers": answers})
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-app = FastAPI()
+        print(f"❌ Error processing request: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
 
 @app.get("/")
 def root():
-    return {"message": "Hello from FastAPI on Render"}
+    """Health check endpoint"""
+    return {
+        "message": "PDF Query API is running",
+        "status": "healthy", 
+        "hackathon_endpoint": "/api/v1/run",
+        "version": "1.0.0"
+    }
 
+@app.get("/health")
+def health_check():
+    """Detailed health check"""
+    return {
+        "status": "healthy",
+        "service": "Lightning Fast PDF Query API",
+        "version": "1.0.0",
+        "endpoints": {
+            "main": "/api/v1/run",
+            "method": "POST",
+            "expected_format": {
+                "documents": "string (PDF URL)",
+                "questions": ["array of question strings"]
+            },
+            "response_format": {
+                "answers": ["array of answer strings"]
+            }
+        }
+    }
+
+# Vercel handler function
+def handler(request):
+    return app
+
+# For local testing
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 7860))  # 7860 is local default
+    port = int(os.environ.get("PORT", 8000))
+    print(f"🚀 Starting server on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
