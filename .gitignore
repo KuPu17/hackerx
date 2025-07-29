@@ -1,0 +1,72 @@
+# SENSITIVE FILES - Never upload these
+.env
+.env.local
+.env.production
+*.key
+config.json
+
+# PYTHON GENERATED FILES
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# YOUR APP DATA - Don't upload user data
+data/
+temp_pdf_*.pdf
+embeddings.pkl
+*.pkl
+uploads/
+documents/
+
+# DEVELOPMENT ENVIRONMENTS
+venv/
+env/
+ENV/
+.venv/
+
+# DEPLOYMENT FILES
+.vercel/
+.netlify/
+
+# IDE/EDITOR FILES
+.vscode/
+.idea/
+*.swp
+*.swo
+.sublime-project
+.sublime-workspace
+
+# OPERATING SYSTEM FILES
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# LOGS AND TEMPORARY FILES
+*.log
+logs/
+tmp/
+temp/
+
+# DEPENDENCIES (if using Node.js too)
+node_modules/

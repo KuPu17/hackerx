@@ -8,3 +8,4 @@ langchain-google-genai
 uvicorn
 fastapi
 pydantic
+
